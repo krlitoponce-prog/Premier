@@ -1,0 +1,33 @@
+{% extends "dashboard/sidebar.html" %}
+{% block content %}
+<div class="container-fluid p-4">
+    <h1 class="mb-4">📊 Estadísticas Premier League</h1>
+    <p class="text-secondary mb-4">Promedios por equipo y tipo de cancha (altura/llano) usados en el pronóstico.</p>
+    <div class="table-responsive">
+        <table class="table table-dark table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>Equipo</th>
+                    <th>Goles/partido</th>
+                    <th>Corners/partido</th>
+                    <th>Tarjetas/partido</th>
+                    <th>Cancha</th>
+                    <th>Altitud</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in equipos_stats %}
+                <tr>
+                    <td>{{ s.equipo }}</td>
+                    <td>{{ s.goles }}</td>
+                    <td>{{ s.corners }}</td>
+                    <td>{{ s.tarjetas }}</td>
+                    <td>{% if s.cancha_tipo == "altura" %}<span class="badge bg-warning text-dark">Altura</span>{% else %}<span class="badge bg-secondary">Llano</span>{% endif %}{% if s.cancha_nota %} <span class="small text-muted">{{ s.cancha_nota }}</span>{% endif %}</td>
+                    <td>{{ s.cancha_metros }} m</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

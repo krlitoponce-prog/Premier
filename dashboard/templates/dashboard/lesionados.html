@@ -1,0 +1,30 @@
+{% extends "dashboard/sidebar.html" %}
+{% block content %}
+<div class="container-fluid p-4">
+    <h1 class="mb-4">🚑 Lesionados</h1>
+    <p class="text-secondary mb-4">Lista de bajas por equipo (actualizada con el botón «Actualizar lesionados» en Inicio). Total: {{ total }} jugadores.</p>
+    {% if not por_equipo %}
+    <p class="text-warning">No hay lesionados cargados. Ve a Inicio y pulsa «Actualizar lesionados».</p>
+    {% else %}
+    {% for equipo, jugadores in por_equipo.items %}
+    <div class="card mb-3 border-secondary" style="background-color: #1e293b;">
+        <div class="card-header text-info border-secondary" style="background-color: #334155;">
+            <strong>{{ equipo }}</strong> ({{ jugadores|length }})
+        </div>
+        <ul class="list-group list-group-flush" style="background-color: #1e293b;">
+            {% for j in jugadores %}
+            <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap" style="background-color: #1e293b; color: #e2e8f0; border-color: #334155;">
+                <span>
+                    {{ j.nombre }} <span class="badge bg-secondary">{{ j.get_posicion_display }}</span>
+                    {% if j.tipo_lesion %}<span class="badge bg-danger ms-1">{{ j.tipo_lesion }}</span>{% endif %}
+                    {% if j.retorno_esperado %}<span class="text-info small ms-1">→ {{ j.retorno_esperado }}</span>{% endif %}
+                </span>
+                <span>{% for i in "xxx" %}{% if forloop.counter <= j.estrellas %}⭐{% endif %}{% endfor %}</span>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endfor %}
+    {% endif %}
+</div>
+{% endblock %}

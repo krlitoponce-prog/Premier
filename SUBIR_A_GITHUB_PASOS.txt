@@ -1,0 +1,56 @@
+============================================
+  SUBIR PREMIER PRO A GITHUB (estructura correcta)
+============================================
+
+Problema: Si subes archivos uno a uno por la web, todo queda en la raíz
+y Django no encuentra core/ ni dashboard/.
+
+Solución: Usar Git desde la carpeta del proyecto. La estructura se mantiene.
+
+--------------------------------------------
+PASO 1: Borrar lo que está ahora en GitHub
+--------------------------------------------
+- Entra a tu repo: github.com/krlitoponce-prog/PREMIER
+- Borra cada archivo (o en Settings → Danger zone → Delete this repository
+  y crea de nuevo un repo vacío "PREMIER"). Si borras archivos uno a uno,
+  deja el repo vacío (sin archivos).
+
+--------------------------------------------
+PASO 2: En tu PC, abrir PowerShell en E:\Dashboard
+--------------------------------------------
+cd E:\Dashboard
+
+--------------------------------------------
+PASO 3: Inicializar Git (si aún no lo hiciste)
+--------------------------------------------
+git init
+git add .
+git status
+(Revisa que no aparezca venv/ ni db.sqlite3; el .gitignore los excluye.)
+
+--------------------------------------------
+PASO 4: Primer commit
+--------------------------------------------
+git commit -m "Premier Pro - Django dashboard"
+
+--------------------------------------------
+PASO 5: Conectar con GitHub y subir
+--------------------------------------------
+git branch -M main
+git remote add origin https://github.com/krlitoponce-prog/PREMIER.git
+git push -u origin main
+
+(Si ya tenías "origin" y falla: git remote remove origin y repite add + push.)
+
+--------------------------------------------
+Resultado
+--------------------------------------------
+En el repo verás la estructura correcta:
+  PREMIER/
+    manage.py
+    requirements.txt
+    .gitignore
+    core/
+      __init__.py, settings.py, urls.py, wsgi.py, asgi.py
+    dashboard/
+      models.py, views.py, urls.py, templates/, migrations/, etc.

@@ -1,0 +1,25 @@
+{% extends "dashboard/sidebar.html" %}
+{% block content %}
+<div class="container-fluid p-4">
+    <h1 class="mb-4">🟥 Sancionados</h1>
+    <p class="text-secondary mb-4">Jugadores sancionados por expulsión o acumulación de tarjetas (actualizado con «Actualizar sancionados» en Inicio). El pronóstico reduce el rendimiento del equipo cuando hay sancionados. Total: {{ total }} jugadores.</p>
+    {% if not por_equipo %}
+    <p class="text-warning">No hay sancionados cargados. Ve a Inicio y pulsa «Actualizar sancionados».</p>
+    {% else %}
+    {% for equipo, jugadores in por_equipo.items %}
+    <div class="card mb-3 border-secondary" style="background-color: #1e293b;">
+        <div class="card-header border-secondary text-warning" style="background-color: #334155;">
+            <strong>{{ equipo }}</strong> ({{ jugadores|length }})
+        </div>
+        <ul class="list-group list-group-flush" style="background-color: #1e293b;">
+            {% for s in jugadores %}
+            <li class="list-group-item d-flex justify-content-between align-items-center" style="background-color: #1e293b; color: #e2e8f0; border-color: #334155;">
+                <span>{{ s.nombre }}{% if s.motivo %} <span class="badge bg-warning text-dark">{{ s.motivo }}</span>{% endif %}</span>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endfor %}
+    {% endif %}
+</div>
+{% endblock %}

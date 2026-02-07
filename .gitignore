@@ -1,0 +1,24 @@
+# Entorno virtual
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Base de datos local (cada uno tiene la suya; al desplegar se crea nueva)
+db.sqlite3
+
+# Estáticos generados
+staticfiles/
+
+# Entorno y secretos
+.env
+.env.local
+*.log
+.DS_Store

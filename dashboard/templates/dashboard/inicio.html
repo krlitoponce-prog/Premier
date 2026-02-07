@@ -1,0 +1,131 @@
+{% extends "dashboard/sidebar.html" %}
+{% block content %}
+<div class="container-fluid p-4">
+    <h1 class="mb-4">Pronóstico Premier League</h1>
+    <p class="text-secondary mb-4">Elige local y visitante y lanza el pronóstico. Opcionalmente actualiza lesionados o árbitros.</p>
+
+    {% if messages %}
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <form method="POST">
+        {% csrf_token %}
+        <div class="row g-3 mb-4">
+            <div class="col-md-5">
+                <label for="id_home_team" class="form-label">Equipo local</label>
+                <select name="home_team" id="id_home_team" class="form-select form-select-lg">
+                    <option value="">-- Seleccionar --</option>
+                    {% for eq in equipos %}
+                    <option value="{{ eq }}" {% if home_sel == eq %}selected{% endif %}>{{ eq }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end justify-content-center pb-2">
+                <span class="text-muted">vs</span>
+            </div>
+            <div class="col-md-5">
+                <label for="id_away_team" class="form-label">Equipo visitante</label>
+                <select name="away_team" id="id_away_team" class="form-select form-select-lg">
+                    <option value="">-- Seleccionar --</option>
+                    {% for eq in equipos %}
+                    <option value="{{ eq }}" {% if away_sel == eq %}selected{% endif %}>{{ eq }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="row mt-3 g-2">
+            <div class="col-md-4">
+                <button type="submit" name="update_bajas" class="btn btn-outline-info btn-lg w-100 fw-bold shadow">
+                    🔄 ACTUALIZAR LESIONADOS
+                </button>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" name="update_arbitros" class="btn btn-outline-warning btn-lg w-100 fw-bold shadow text-dark">
+                    👨‍⚖️ ACTUALIZAR ÁRBITROS
+                </button>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-info btn-lg w-100 fw-bold shadow text-dark">
+                    🚀 LANZAR PRONÓSTICO
+                </button>
+            </div>
+        </div>
+        <div class="row mt-2 g-2">
+            <div class="col-md-4">
+                <button type="submit" name="update_sancionados" class="btn btn-outline-danger btn-lg w-100 fw-bold shadow">
+                    🟥 ACTUALIZAR SANCIONADOS
+                </button>
+            </div>
+        </div>
+        <p class="small text-muted mt-2 mb-0">Árbitros: se designan 1–2 días antes. Sancionados y lesionados bajan el rendimiento del equipo en el pronóstico.</p>
+    </form>
+
+    {% if marcador %}
+    <div class="card mt-5 border-secondary" style="background-color: #fff;">
+        <div class="card-header text-info border-secondary" style="background-color: #e8f4fc;">
+            <strong>Resultado del pronóstico</strong>
+        </div>
+        <div class="card-body text-dark">
+            <p class="fs-3 mb-3">Marcador: <strong>{{ marcador }}</strong></p>
+            <p class="mb-1">Corners (aprox.): <strong>{{ corners }}</strong></p>
+            <p class="mb-2">Tarjetas (aprox.): <strong>{{ tarjetas }}</strong></p>
+            <p class="mb-1"><strong>Goles en 1.ª parte:</strong> ~{{ pct_goles_primer_tiempo }}% (aprox. {{ goles_primer_tiempo_esperados }} goles)</p>
+            <p class="mb-2"><strong>Prob. ambos anoten:</strong> {{ prob_ambos_anotan }}%</p>
+
+            <div class="mb-3 p-2 rounded bg-light">
+                <p class="mb-1 text-dark"><strong>Árbitro:</strong> {{ arbitro_nombre }}{% if arbitro_oficial %} <span class="badge bg-success">Oficial</span>{% endif %}</p>
+                <p class="mb-0 small text-body-secondary">Promedio tarjetas/partido: {{ arbitro_tarjetas_promedio }} — {{ arbitro_nota }}</p>
+            </div>
+            {% if fecha_partido %}
+            <p class="mb-1"><strong>Fecha del partido (API):</strong> {{ fecha_partido }}</p>
+            {% endif %}
+            <p class="small text-body-secondary mb-3">
+                <strong class="text-dark">Partido entre semana:</strong>
+                Local: {% if partido_entre_semana_local %}Sí (posible cansancio){% else %}No{% endif %}
+                — Visitante: {% if partido_entre_semana_visitante %}Sí (posible cansancio){% else %}No{% endif %}
+            </p>
+            <p class="small text-body-secondary mb-3">
+                <strong class="text-dark">Cancha local:</strong> {{ cancha_local_texto }}{% if cancha_local_tipo == "altura" %} <span class="badge bg-secondary">Ventaja local</span>{% endif %}
+            </p>
+
+            {% if bajas_h or bajas_a %}
+            <hr class="border-secondary">
+            <p class="small text-body-secondary mb-2">⭐ Leyenda: 3 = figura, 2 = cuenta, 1 = normal</p>
+            {% if bajas_h %}
+            <p class="text-dark mb-1">Lesionados local ({{ pct_bajas_h }}% de la plantilla):</p>
+            <ul class="small text-body-secondary">
+                {% for nombre, pos, estrellas in bajas_h %}
+                <li>{{ nombre }} ({{ pos }}) — {% for i in "xxx" %}{% if forloop.counter <= estrellas %}⭐{% endif %}{% endfor %}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% if bajas_a %}
+            <p class="text-dark mb-1">Lesionados visitante ({{ pct_bajas_a }}% de la plantilla):</p>
+            <ul class="small text-body-secondary">
+                {% for nombre, pos, estrellas in bajas_a %}
+                <li>{{ nombre }} ({{ pos }}) — {% for i in "xxx" %}{% if forloop.counter <= estrellas %}⭐{% endif %}{% endfor %}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% endif %}
+            {% if sancionados_h or sancionados_a %}
+            <hr class="border-secondary">
+            {% if sancionados_h %}
+            <p class="text-dark mb-1">Sancionados local:</p>
+            <ul class="small text-body-secondary">{% for nombre in sancionados_h %}<li>{{ nombre }}</li>{% endfor %}</ul>
+            {% endif %}
+            {% if sancionados_a %}
+            <p class="text-dark mb-1">Sancionados visitante:</p>
+            <ul class="small text-body-secondary">{% for nombre in sancionados_a %}<li>{{ nombre }}</li>{% endfor %}</ul>
+            {% endif %}
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
