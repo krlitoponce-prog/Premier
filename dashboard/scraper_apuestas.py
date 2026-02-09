@@ -74,6 +74,41 @@ def _extraer_texto(el):
     return str(el).strip()
 
 
+# Cadenas que indican que la fila NO es un jugador (tablas de casas de apuestas, etc.)
+_NO_ES_JUGADOR = frozenset([
+    "1xbet", "bet365", "codere", "sportium", "william hill", "luckia", "versus",
+    "gran madrid", "retabet", "bwin", "reseña", "unirse", "marathonbet", "kirolbet",
+    "leovegas", "marca apuestas",
+])
+
+
+def _es_nombre_jugador(nombre):
+    """Devuelve False si el nombre parece una casa de apuestas o no es un jugador."""
+    if not nombre or len(nombre) < 3:
+        return False
+    n = nombre.lower().strip()
+    if n in _NO_ES_JUGADOR:
+        return False
+    for no in _NO_ES_JUGADOR:
+        if no in n or n in no:
+            return False
+    if n in ("jugador", "lesión", "lesion", "#", "sin especificar"):
+        return False
+    return True
+
+
+def _celda_es_lesion_o_suspension(texto):
+    """True si el texto de la columna parece tipo lesión o suspensión."""
+    t = (texto or "").lower()
+    if "suspensión" in t or "suspension" in t:
+        return True
+    if any(x in t for x in ("lesión", "lesion", "malestar", "golpe", "rodilla", "tobillo", "muscular", "duda", "desconocido", "pie", "gemelo", "isquiotibial", "cruzado", "distensión")):
+        return True
+    if "-" in t and len(t) < 60 and re.match(r"^[a-záéíóú\s\-]+$", t):
+        return True  # partido tipo "Sunderland-Liverpool"
+    return False
+
+
 def _procesar_tabla_equipo(tag, equipo, lesionados, sancionados):
     """Procesa todas las tablas que pertenecen a este h2 (hasta el siguiente h2)."""
     last_sancionado_player = None
@@ -100,11 +135,13 @@ def _procesar_tabla_equipo(tag, equipo, lesionados, sancionados):
                 if c0:
                     last_sancionado_player = c0
                 motivo = (c1 + " " + c2).strip()[:150] if (c1 or c2) else "Suspensión"
-                if nombre and nombre.lower() != "jugador":
+                if nombre and nombre.lower() != "jugador" and _es_nombre_jugador(nombre):
                     sancionados.append({"nombre": nombre, "equipo": equipo, "motivo": motivo})
             else:
                 # Lesión: Jugador | Lesión | Fecha | Rendimiento
-                if not c0 or c0.lower() in ("jugador", "lesión", "lesion"):
+                if not c0 or c0.lower() in ("jugador", "lesión", "lesion") or not _es_nombre_jugador(c0):
+                    continue
+                if not _celda_es_lesion_o_suspension(_extraer_texto(celdas[1])):
                     continue
                 count_lesionados_equipo += 1
                 estrellas = 3 if count_lesionados_equipo == 1 else (2 if count_lesionados_equipo <= 3 else 1)
@@ -163,6 +200,19 @@ def _parsear_desde_texto(html_text, lesionados, sancionados):
             if not table:
                 pos = table_end
                 continue
+            # Comprobar que la tabla tiene al menos una fila válida (jugador + lesión/suspensión)
+            tiene_valida = False
+            for tr in table.find_all("tr"):
+                celdas = tr.find_all(["td", "th"])
+                if len(celdas) < 2:
+                    continue
+                c0, c1 = _extraer_texto(celdas[0]), _extraer_texto(celdas[1])
+                if _es_nombre_jugador(c0) and _celda_es_lesion_o_suspension(c1):
+                    tiene_valida = True
+                    break
+            if not tiene_valida:
+                pos = table_end
+                continue
             last_sancionado_player = None
             count_lesionados_equipo = 0
             for tr in table.find_all("tr"):
@@ -180,10 +230,12 @@ def _parsear_desde_texto(html_text, lesionados, sancionados):
                     if c0:
                         last_sancionado_player = c0
                     motivo = (c1 + " " + c2).strip()[:150] if (c1 or c2) else "Suspensión"
-                    if nombre and nombre.lower() != "jugador":
+                    if nombre and nombre.lower() != "jugador" and _es_nombre_jugador(nombre):
                         sancionados.append({"nombre": nombre, "equipo": equipo, "motivo": motivo})
                 else:
-                    if not c0 or c0.lower() in ("jugador", "lesión", "lesion"):
+                    if not c0 or c0.lower() in ("jugador", "lesión", "lesion") or not _es_nombre_jugador(c0):
+                        continue
+                    if not _celda_es_lesion_o_suspension(_extraer_texto(celdas[1])):
                         continue
                     count_lesionados_equipo += 1
                     estrellas = 3 if count_lesionados_equipo == 1 else (2 if count_lesionados_equipo <= 3 else 1)
@@ -200,9 +252,21 @@ def _parsear_desde_texto(html_text, lesionados, sancionados):
 def _procesar_tabla_equipo_fallback(soup, lesionados, sancionados):
     """Fallback: recorrer tablas y asociar con el h2/h3/h4 anterior; solo tablas que parecen de lesionados."""
     for table in soup.find_all("table"):
-        # Comprobar que la tabla tiene al menos una fila de datos
         rows = table.find_all("tr")
+        # Exigir que haya al menos una fila que sea lesión/sanción (evitar tabla de casas de apuestas)
         if not any(len(tr.find_all(["td", "th"])) >= 2 and _fila_es_lesion_o_sancion(tr.find_all(["td", "th"])) for tr in rows):
+            continue
+        # Y que alguna fila tenga col1 tipo lesión/suspensión y nombre que parezca jugador
+        tiene_fila_valida = False
+        for tr in rows:
+            celdas = tr.find_all(["td", "th"])
+            if len(celdas) < 2:
+                continue
+            c0, c1 = _extraer_texto(celdas[0]), _extraer_texto(celdas[1])
+            if _es_nombre_jugador(c0) and _celda_es_lesion_o_suspension(c1):
+                tiene_fila_valida = True
+                break
+        if not tiene_fila_valida:
             continue
         prev = table.find_previous(["h2", "h3", "h4"])
         if not prev:
@@ -228,10 +292,12 @@ def _procesar_tabla_equipo_fallback(soup, lesionados, sancionados):
                 if c0:
                     last_sancionado_player = c0
                 motivo = (c1 + " " + c2).strip()[:150] if (c1 or c2) else "Suspensión"
-                if nombre and nombre.lower() != "jugador":
+                if nombre and nombre.lower() != "jugador" and _es_nombre_jugador(nombre):
                     sancionados.append({"nombre": nombre, "equipo": equipo, "motivo": motivo})
             else:
-                if not c0 or c0.lower() in ("jugador", "lesión", "lesion"):
+                if not c0 or c0.lower() in ("jugador", "lesión", "lesion") or not _es_nombre_jugador(c0):
+                    continue
+                if not _celda_es_lesion_o_suspension(_extraer_texto(celdas[1])):
                     continue
                 count_lesionados_equipo += 1
                 estrellas = 3 if count_lesionados_equipo == 1 else (2 if count_lesionados_equipo <= 3 else 1)
