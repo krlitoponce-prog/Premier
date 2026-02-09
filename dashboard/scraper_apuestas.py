@@ -11,10 +11,14 @@ from .models import Lesionado, Sancionado
 
 URL = "https://www.apuestas-deportivas.es/premier-league-inglaterra-jugadores-lesionados-y-sancionados/"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
     "Referer": "https://www.apuestas-deportivas.es/",
+    "DNT": "1",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
 }
 
 # Nombre en la web -> nombre en nuestra app
@@ -102,11 +106,37 @@ def _celda_es_lesion_o_suspension(texto):
     t = (texto or "").lower()
     if "suspensión" in t or "suspension" in t:
         return True
-    if any(x in t for x in ("lesión", "lesion", "malestar", "golpe", "rodilla", "tobillo", "muscular", "duda", "desconocido", "pie", "gemelo", "isquiotibial", "cruzado", "distensión")):
+    palabras = (
+        "lesión", "lesion", "malestar", "golpe", "rodilla", "tobillo", "muscular", "duda", "desconocido",
+        "pie", "gemelo", "isquiotibial", "cruzado", "distensión", "espalda", "hombro", "cadera", "pierna",
+        "conmoción", "cerebral", "cirugía", "roto", "rotura", "ligamento", "muslo",
+    )
+    if any(x in t for x in palabras):
         return True
-    if "-" in t and len(t) < 60 and re.match(r"^[a-záéíóú\s\-]+$", t):
+    if "-" in t and len(t) < 60 and re.match(r"^[a-záéíóúñ\s\-]+$", t):
         return True  # partido tipo "Sunderland-Liverpool"
     return False
+
+
+def _columnas_fila(celdas):
+    """Devuelve (nombre, lesion, fecha, retorno). Si la primera celda está vacía (tabla con columna extra), desplaza índices."""
+    if len(celdas) < 2:
+        return None
+    c0 = _extraer_texto(celdas[0])
+    # Tabla con columna vacía al inicio: [vacío, Jugador, Lesión, Fecha, Rendimiento]
+    if not c0 and len(celdas) >= 5:
+        return (
+            _extraer_texto(celdas[1]),
+            _extraer_texto(celdas[2]),
+            _extraer_texto(celdas[3]) if len(celdas) > 3 else "",
+            _extraer_texto(celdas[4]) if len(celdas) > 4 else "",
+        )
+    return (
+        c0,
+        _extraer_texto(celdas[1]),
+        _extraer_texto(celdas[2]) if len(celdas) > 2 else "",
+        _extraer_texto(celdas[3]) if len(celdas) > 3 else "",
+    )
 
 
 def _procesar_tabla_equipo(tag, equipo, lesionados, sancionados):
@@ -115,16 +145,15 @@ def _procesar_tabla_equipo(tag, equipo, lesionados, sancionados):
     count_lesionados_equipo = 0
 
     for table in tag.find_all_next("table"):
-        if table.find_previous("h2") != tag:
+        if table.find_previous(["h2", "h3", "h4"]) != tag:
             break
         for tr in table.find_all("tr"):
             celdas = tr.find_all(["td", "th"])
-            if len(celdas) < 2:
+            col = _columnas_fila(celdas)
+            if not col:
                 continue
-            c0 = _extraer_texto(celdas[0])
-            c1 = _extraer_texto(celdas[1]).lower()
-            c2 = _extraer_texto(celdas[2]) if len(celdas) > 2 else ""
-            c3 = _extraer_texto(celdas[3]) if len(celdas) > 3 else ""
+            c0, c1_raw, c2, c3 = col
+            c1 = c1_raw.lower()
 
             # Cabecera de tabla de suspensiones
             if c0.lower() == "jugador" and ("suspensión" in c1 or "suspension" in c1):
@@ -141,25 +170,26 @@ def _procesar_tabla_equipo(tag, equipo, lesionados, sancionados):
                 # Lesión: Jugador | Lesión | Fecha | Rendimiento
                 if not c0 or c0.lower() in ("jugador", "lesión", "lesion") or not _es_nombre_jugador(c0):
                     continue
-                if not _celda_es_lesion_o_suspension(_extraer_texto(celdas[1])):
+                if not _celda_es_lesion_o_suspension(c1_raw):
                     continue
                 count_lesionados_equipo += 1
                 estrellas = 3 if count_lesionados_equipo == 1 else (2 if count_lesionados_equipo <= 3 else 1)
                 lesionados.append({
                     "nombre": c0[:100],
                     "equipo": equipo,
-                    "tipo_lesion": _extraer_texto(celdas[1])[:120],
+                    "tipo_lesion": c1_raw[:120],
                     "retorno_esperado": c3[:120],
                     "estrellas": estrellas,
                 })
 
 
 def _fila_es_lesion_o_sancion(celdas):
-    """Comprueba si la fila parece de lesionados/sancionados (no cabecera ni otra tabla)."""
-    if len(celdas) < 2:
+    """Comprueba si la fila parece de lesionados/sancionados (no cabecera ni otra tabla). Usa _columnas_fila por si la tabla tiene columna vacía."""
+    col = _columnas_fila(celdas)
+    if not col:
         return False
-    c0 = _extraer_texto(celdas[0]).lower()
-    c1 = _extraer_texto(celdas[1]).lower()
+    c0, c1_raw, *_ = col
+    c0, c1 = c0.lower(), (c1_raw or "").lower()
     if c0 in ("jugador", "lesión", "lesion", "#") and not c1:
         return False
     if "suspensión" in c1 or "suspension" in c1 or ("-" in c1 and len(c1) < 60):
@@ -204,9 +234,10 @@ def _parsear_desde_texto(html_text, lesionados, sancionados):
             tiene_valida = False
             for tr in table.find_all("tr"):
                 celdas = tr.find_all(["td", "th"])
-                if len(celdas) < 2:
+                col = _columnas_fila(celdas)
+                if not col:
                     continue
-                c0, c1 = _extraer_texto(celdas[0]), _extraer_texto(celdas[1])
+                c0, c1, *_ = col
                 if _es_nombre_jugador(c0) and _celda_es_lesion_o_suspension(c1):
                     tiene_valida = True
                     break
@@ -217,12 +248,11 @@ def _parsear_desde_texto(html_text, lesionados, sancionados):
             count_lesionados_equipo = 0
             for tr in table.find_all("tr"):
                 celdas = tr.find_all(["td", "th"])
-                if len(celdas) < 2:
+                col = _columnas_fila(celdas)
+                if not col:
                     continue
-                c0 = _extraer_texto(celdas[0])
-                c1 = _extraer_texto(celdas[1]).lower()
-                c2 = _extraer_texto(celdas[2]) if len(celdas) > 2 else ""
-                c3 = _extraer_texto(celdas[3]) if len(celdas) > 3 else ""
+                c0, c1_raw, c2, c3 = col
+                c1 = c1_raw.lower()
                 if c0.lower() == "jugador" and ("suspensión" in c1 or "suspension" in c1):
                     continue
                 if "suspensión" in c1 or "suspension" in c1 or (c1 and "-" in c1 and len(c1) < 60):
@@ -235,14 +265,14 @@ def _parsear_desde_texto(html_text, lesionados, sancionados):
                 else:
                     if not c0 or c0.lower() in ("jugador", "lesión", "lesion") or not _es_nombre_jugador(c0):
                         continue
-                    if not _celda_es_lesion_o_suspension(_extraer_texto(celdas[1])):
+                    if not _celda_es_lesion_o_suspension(c1_raw):
                         continue
                     count_lesionados_equipo += 1
                     estrellas = 3 if count_lesionados_equipo == 1 else (2 if count_lesionados_equipo <= 3 else 1)
                     lesionados.append({
                         "nombre": c0[:100],
                         "equipo": equipo,
-                        "tipo_lesion": _extraer_texto(celdas[1])[:120],
+                        "tipo_lesion": c1_raw[:120],
                         "retorno_esperado": c3[:120],
                         "estrellas": estrellas,
                     })
@@ -260,9 +290,10 @@ def _procesar_tabla_equipo_fallback(soup, lesionados, sancionados):
         tiene_fila_valida = False
         for tr in rows:
             celdas = tr.find_all(["td", "th"])
-            if len(celdas) < 2:
+            col = _columnas_fila(celdas)
+            if not col:
                 continue
-            c0, c1 = _extraer_texto(celdas[0]), _extraer_texto(celdas[1])
+            c0, c1, *_ = col
             if _es_nombre_jugador(c0) and _celda_es_lesion_o_suspension(c1):
                 tiene_fila_valida = True
                 break
@@ -279,12 +310,11 @@ def _procesar_tabla_equipo_fallback(soup, lesionados, sancionados):
         count_lesionados_equipo = 0
         for tr in table.find_all("tr"):
             celdas = tr.find_all(["td", "th"])
-            if len(celdas) < 2:
+            col = _columnas_fila(celdas)
+            if not col:
                 continue
-            c0 = _extraer_texto(celdas[0])
-            c1 = _extraer_texto(celdas[1]).lower()
-            c2 = _extraer_texto(celdas[2]) if len(celdas) > 2 else ""
-            c3 = _extraer_texto(celdas[3]) if len(celdas) > 3 else ""
+            c0, c1_raw, c2, c3 = col
+            c1 = c1_raw.lower()
             if c0.lower() == "jugador" and ("suspensión" in c1 or "suspension" in c1):
                 continue
             if "suspensión" in c1 or "suspension" in c1 or (c1 and "-" in c1 and len(c1) < 60):
@@ -297,14 +327,14 @@ def _procesar_tabla_equipo_fallback(soup, lesionados, sancionados):
             else:
                 if not c0 or c0.lower() in ("jugador", "lesión", "lesion") or not _es_nombre_jugador(c0):
                     continue
-                if not _celda_es_lesion_o_suspension(_extraer_texto(celdas[1])):
+                if not _celda_es_lesion_o_suspension(c1_raw):
                     continue
                 count_lesionados_equipo += 1
                 estrellas = 3 if count_lesionados_equipo == 1 else (2 if count_lesionados_equipo <= 3 else 1)
                 lesionados.append({
                     "nombre": c0[:100],
                     "equipo": equipo,
-                    "tipo_lesion": _extraer_texto(celdas[1])[:120],
+                    "tipo_lesion": c1_raw[:120],
                     "retorno_esperado": c3[:120],
                     "estrellas": estrellas,
                 })
@@ -322,18 +352,33 @@ def ejecutar_scraper_apuestas_lesionados_sancionados():
         lesionados = []
         sancionados = []
 
-        # Buscar contenido principal (WordPress: article, main, #content) para no coger tablas del sidebar
-        root = soup.find("article") or soup.find("main") or soup.find(id=re.compile(r"content|main", re.I)) or soup
-        for tag in root.find_all(["h2", "h3", "h4"]):
-            titulo = _extraer_texto(tag)
-            equipo = _normalizar_equipo(titulo)
-            if not equipo:
-                continue
-            _procesar_tabla_equipo(tag, equipo, lesionados, sancionados)
+        def _extraer_con_root(raiz):
+            for tag in raiz.find_all(["h2", "h3", "h4"]):
+                titulo = _extraer_texto(tag)
+                equipo = _normalizar_equipo(titulo)
+                if not equipo:
+                    continue
+                _procesar_tabla_equipo(tag, equipo, lesionados, sancionados)
 
-        # Si no se encontró nada, intentar fallback: tablas con título anterior
+        # Buscar contenido principal (WordPress: article, main, .entry-content) para no coger tablas del sidebar
+        root = (
+            soup.find("article")
+            or soup.find("main")
+            or soup.find(class_=re.compile(r"entry-content|post-content|content", re.I))
+            or soup.find(id=re.compile(r"content|main", re.I))
+            or soup
+        )
+        _extraer_con_root(root)
+
+        # Si no se encontró nada, intentar con la página completa (por si el contenido no está en article/main)
+        if not lesionados and not sancionados:
+            _extraer_con_root(soup)
+
+        # Fallback: tablas con título anterior
         if not lesionados and not sancionados:
             _procesar_tabla_equipo_fallback(root, lesionados, sancionados)
+        if not lesionados and not sancionados:
+            _procesar_tabla_equipo_fallback(soup, lesionados, sancionados)
 
         # Último recurso: parsear el HTML como texto (por si las tablas son divs o estructura rara)
         if not lesionados and not sancionados:
