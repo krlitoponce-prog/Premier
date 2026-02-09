@@ -122,6 +122,23 @@ def obtener_estadios_premier():
     return _ESTADIO_POR_EQUIPO.copy()
 
 
+def get_arbitros_fallback():
+    """Lista estática de árbitros por si falla la carga externa. Para uso en vistas."""
+    return list(_ARBITROS_PREMIER)
+
+
+def obtener_lista_arbitros_premier():
+    """Lista de árbitros para el selector: desde livefutbol.com o fallback a lista estática. Nunca devuelve lista vacía."""
+    try:
+        from .scraper_livefutbol import obtener_arbitros_livefutbol
+        lista = obtener_arbitros_livefutbol()
+        if lista:
+            return lista
+    except Exception:
+        pass
+    return get_arbitros_fallback()
+
+
 def _elegir_arbitro_para_partido(home, away):
     """Elige árbitro: 1) DB (scraper), 2) lista estática, 3) hash. Devuelve (arbitro_dict, es_oficial)."""
     from .models import DesignacionArbitro
@@ -145,7 +162,19 @@ def _elegir_arbitro_para_partido(home, away):
     return _ARBITROS_PREMIER[idx], False
 
 
-def generar_pronostico_pro(home, away):
+def _buscar_arbitro_por_nombre(nombre):
+    """Busca un árbitro por nombre en la lista de livefutbol o estática."""
+    if not nombre:
+        return None
+    nombre = nombre.strip()
+    lista = obtener_lista_arbitros_premier()
+    for a in lista:
+        if (a.get("nombre") or "").strip() == nombre:
+            return a
+    return {"nombre": nombre, "tarjetas_promedio": 3.8, "nota": "Selección manual"}
+
+
+def generar_pronostico_pro(home, away, arbitro_manual=None):
     if not home or not away:
         return {}
 
@@ -186,8 +215,12 @@ def generar_pronostico_pro(home, away):
     g_h = max(_GOLES_MINIMOS_POR_EQUIPO, g_h)
     g_a = max(_GOLES_MINIMOS_POR_EQUIPO, g_a)
 
-    # Árbitro: ajustamos tarjetas base con el promedio del árbitro (factor respecto a 4.0)
-    arbitro, arbitro_oficial = _elegir_arbitro_para_partido(home, away)
+    # Árbitro: si el usuario eligió uno manualmente, usarlo; si no, elegir automático
+    if arbitro_manual:
+        arbitro = _buscar_arbitro_por_nombre(arbitro_manual)
+        arbitro_oficial = True  # usuario lo eligió
+    else:
+        arbitro, arbitro_oficial = _elegir_arbitro_para_partido(home, away)
     tarjetas_base = stats_h['t'] + stats_a['t']
     factor_arbitro = arbitro["tarjetas_promedio"] / 4.0
     tarjetas_ajustadas = round(tarjetas_base * factor_arbitro, 1)

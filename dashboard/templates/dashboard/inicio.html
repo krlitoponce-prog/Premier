@@ -38,6 +38,24 @@
                 </select>
             </div>
         </div>
+        <div class="row g-3 mb-4">
+            <div class="col-12">
+                <div class="card border-warning">
+                    <div class="card-header py-2 bg-warning text-dark fw-bold small">
+                        👨‍⚖️ Elige el árbitro del partido (opcional) — así se calculan las tarjetas
+                    </div>
+                    <div class="card-body py-2 bg-dark">
+                        <select name="arbitro_manual" id="id_arbitro" class="form-select">
+                            <option value="">-- No elegir (automático) --</option>
+                            {% for a in arbitros %}
+                            <option value="{{ a.nombre }}" {% if arbitro_sel == a.nombre %}selected{% endif %}>{{ a.nombre }} — {{ a.tarjetas_promedio }} tarj/partido</option>
+                            {% endfor %}
+                        </select>
+                        <span class="small text-muted">{{ arbitros|length }} árbitros disponibles.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
         <div class="row mt-3 g-2">
             <div class="col-md-4">
                 <button type="submit" name="update_bajas" class="btn btn-outline-info btn-lg w-100 fw-bold shadow">
@@ -50,19 +68,19 @@
                 </button>
             </div>
             <div class="col-md-4">
-                <button type="submit" class="btn btn-info btn-lg w-100 fw-bold shadow text-dark">
-                    🚀 LANZAR PRONÓSTICO
-                </button>
-            </div>
-        </div>
-        <div class="row mt-2 g-2">
-            <div class="col-md-4">
                 <button type="submit" name="update_sancionados" class="btn btn-outline-danger btn-lg w-100 fw-bold shadow">
                     🟥 ACTUALIZAR SANCIONADOS
                 </button>
             </div>
         </div>
-        <p class="small text-muted mt-2 mb-0">Árbitros: se designan 1–2 días antes. Sancionados y lesionados bajan el rendimiento del equipo en el pronóstico.</p>
+        <div class="row mt-3">
+            <div class="col-12">
+                <button type="submit" class="btn btn-info btn-lg w-100 fw-bold shadow text-dark">
+                    🚀 LANZAR PRONÓSTICO
+                </button>
+            </div>
+        </div>
+        <p class="small text-muted mt-2 mb-0">Elige local, visitante y (opcional) árbitro. Las tarjetas del pronóstico se calculan con el árbitro que elijas.</p>
     </form>
 
     {% if marcador %}

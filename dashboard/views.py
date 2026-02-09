@@ -1,47 +1,84 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from .utils import generar_pronostico_pro, obtener_datos_completos_premier, obtener_estadios_premier
-from .scraper import ejecutar_scraper_premier
+from .utils import (
+    generar_pronostico_pro,
+    obtener_datos_completos_premier,
+    obtener_estadios_premier,
+    obtener_lista_arbitros_premier,
+    get_arbitros_fallback,
+)
+from .scraper_apuestas import ejecutar_scraper_apuestas_lesionados_sancionados
 from .scraper_arbitros import ejecutar_scraper_arbitros_fichajes
-from .scraper import ejecutar_scraper_sancionados
+from .scraper_livefutbol import obtener_arbitros_livefutbol, limpiar_cache_arbitros
 from .models import Lesionado, Sancionado
 
 
 def home_dashboard(request):
     equipos = list(obtener_datos_completos_premier().keys())
-    context = {'equipos': equipos}
-    
-    if request.method == 'POST':
-        if 'update_bajas' in request.POST:
-            ejecutar_scraper_premier()
-            messages.success(request, "Lista de lesionados actualizada.")
-            return redirect('home')
-        if 'update_arbitros' in request.POST:
-            num_partidos, num_arbitros = ejecutar_scraper_arbitros_fichajes(obtener_pagina_partido=True)
-            if num_partidos:
+    try:
+        arbitros = obtener_lista_arbitros_premier()
+    except Exception:
+        arbitros = get_arbitros_fallback()
+    context = {"equipos": equipos, "arbitros": arbitros}
+
+    if request.method == "POST":
+        if "update_bajas" in request.POST:
+            ok, n_les, n_san = ejecutar_scraper_apuestas_lesionados_sancionados()
+            if ok:
                 messages.success(
                     request,
-                    f"Árbitros actualizados: {num_partidos} partidos revisados, {num_arbitros} con árbitro asignado. "
-                    "Las tarjetas del pronóstico usarán estos datos cuando estén disponibles."
+                    f"Lesionados y sancionados actualizados desde apuestas-deportivas.es: {n_les} lesionados, {n_san} sancionados.",
                 )
             else:
-                messages.warning(request, "No se pudieron cargar partidos desde la fuente. Reintenta más tarde.")
-            return redirect('home')
-        if 'update_sancionados' in request.POST:
-            if ejecutar_scraper_sancionados():
-                messages.success(request, "Lista de sancionados actualizada. El pronóstico tendrá en cuenta las bajas por sanción.")
+                messages.warning(request, "No se pudieron cargar lesionados/sancionados. Reintenta más tarde.")
+            return redirect("home")
+        if "update_arbitros" in request.POST:
+            # 1) Actualizar lista de árbitros (nombres + tarjetas/partido) desde livefutbol
+            limpiar_cache_arbitros()
+            lista_livefutbol = obtener_arbitros_livefutbol()
+            # 2) Opcional: designaciones por partido desde fichajes
+            num_partidos, num_designaciones = ejecutar_scraper_arbitros_fichajes(obtener_pagina_partido=True)
+            if lista_livefutbol:
+                msg = f"Lista de árbitros actualizada desde livefutbol.com: {len(lista_livefutbol)} árbitros (tarjetas/partido)."
+                if num_partidos and num_designaciones:
+                    msg += f" Designaciones por partido: {num_partidos} partidos, {num_designaciones} con árbitro."
+                messages.success(request, msg)
+            elif num_partidos and num_designaciones:
+                messages.success(
+                    request,
+                    f"Designaciones por partido actualizadas: {num_designaciones} partidos con árbitro. "
+                    "La lista del desplegable usa datos guardados.",
+                )
+            else:
+                n_arb = len(arbitros)
+                messages.info(
+                    request,
+                    f"No se pudo conectar con livefutbol ni con la fuente de partidos. "
+                    f"El desplegable sigue con la lista actual ({n_arb} árbitros) para elegir y calcular tarjetas.",
+                )
+            return redirect("home")
+        if "update_sancionados" in request.POST:
+            ok, n_les, n_san = ejecutar_scraper_apuestas_lesionados_sancionados()
+            if ok:
+                messages.success(
+                    request,
+                    f"Lesionados y sancionados actualizados: {n_les} lesionados, {n_san} sancionados.",
+                )
             else:
                 messages.warning(request, "No se pudieron cargar sancionados. Reintenta más tarde.")
-            return redirect('home')
-            
-        home = request.POST.get('home_team')
-        away = request.POST.get('away_team')
+            return redirect("home")
+
+        home = request.POST.get("home_team")
+        away = request.POST.get("away_team")
+        arbitro_manual = (request.POST.get("arbitro_manual") or "").strip() or None
         if home and away:
-            context.update(generar_pronostico_pro(home, away))
-            context['home_sel'] = home
-            context['away_sel'] = away
-            
-    return render(request, 'dashboard/inicio.html', context)
+            context.update(generar_pronostico_pro(home, away, arbitro_manual=arbitro_manual))
+            context["home_sel"] = home
+            context["away_sel"] = away
+            if arbitro_manual:
+                context["arbitro_sel"] = arbitro_manual
+
+    return render(request, "dashboard/inicio.html", context)
 
 
 def estadisticas(request):

@@ -75,9 +75,10 @@ Luego `git add .`, `git commit`, `git push` otra vez.
 2. **New** → **Web Service** → conecta tu repositorio de GitHub y elige el repo.
 
 3. Configuración típica:
-   - **Build Command:** `pip install -r requirements.txt && python manage.py collectstatic --noinput`
+   - **Build Command:** `pip install -r requirements.txt && python manage.py migrate --noinput && python manage.py collectstatic --noinput`
    - **Start Command:** `gunicorn core.wsgi:application --bind 0.0.0.0:$PORT`
    - **Plan:** Free.
+   - **Importante:** Si ya tenías un Build Command sin `migrate`, añade `python manage.py migrate --noinput` antes de `collectstatic` para crear las tablas (dashboard_lesionado, etc.) y evitar el error "no such table".
 
 4. En **Environment** añade (recomendado para producción):
    - `DEBUG` = `False`
