@@ -132,6 +132,71 @@ def _fila_es_lesion_o_sancion(celdas):
     return False
 
 
+def _parsear_desde_texto(html_text, lesionados, sancionados):
+    """Último recurso: en HTML crudo, buscar h2/h3 con nombre de equipo y la siguiente tabla."""
+    # Posiciones de cada <h2> o <h3> con su equipo normalizado
+    titulos = []
+    for m in re.finditer(r"<h[234][^>]*>([^<]+)</h[234]>", html_text, re.I):
+        titulo_limpio = re.sub(r"\s+", " ", m.group(1).strip())
+        equipo = _normalizar_equipo(titulo_limpio)
+        if equipo:
+            titulos.append((m.start(), m.end(), equipo))
+    if not titulos:
+        return
+    # Para cada título, tomar la porción de HTML hasta el siguiente título (o fin) y extraer tablas
+    for i, (t_start, t_end, equipo) in enumerate(titulos):
+        fin_bloque = titulos[i + 1][0] if i + 1 < len(titulos) else len(html_text)
+        bloque = html_text[t_end:fin_bloque]
+        # Tablas simples (sin anidar): <table ...> ... </table>
+        pos = 0
+        while True:
+            table_start = bloque.find("<table", pos)
+            if table_start == -1:
+                break
+            table_end = bloque.find("</table>", table_start)
+            if table_end == -1:
+                break
+            table_end += len("</table>")
+            fragmento = bloque[table_start:table_end]
+            sub = BeautifulSoup(fragmento, "html.parser")
+            table = sub.find("table")
+            if not table:
+                pos = table_end
+                continue
+            last_sancionado_player = None
+            count_lesionados_equipo = 0
+            for tr in table.find_all("tr"):
+                celdas = tr.find_all(["td", "th"])
+                if len(celdas) < 2:
+                    continue
+                c0 = _extraer_texto(celdas[0])
+                c1 = _extraer_texto(celdas[1]).lower()
+                c2 = _extraer_texto(celdas[2]) if len(celdas) > 2 else ""
+                c3 = _extraer_texto(celdas[3]) if len(celdas) > 3 else ""
+                if c0.lower() == "jugador" and ("suspensión" in c1 or "suspension" in c1):
+                    continue
+                if "suspensión" in c1 or "suspension" in c1 or (c1 and "-" in c1 and len(c1) < 60):
+                    nombre = (c0 or last_sancionado_player or "Jugador")[:100]
+                    if c0:
+                        last_sancionado_player = c0
+                    motivo = (c1 + " " + c2).strip()[:150] if (c1 or c2) else "Suspensión"
+                    if nombre and nombre.lower() != "jugador":
+                        sancionados.append({"nombre": nombre, "equipo": equipo, "motivo": motivo})
+                else:
+                    if not c0 or c0.lower() in ("jugador", "lesión", "lesion"):
+                        continue
+                    count_lesionados_equipo += 1
+                    estrellas = 3 if count_lesionados_equipo == 1 else (2 if count_lesionados_equipo <= 3 else 1)
+                    lesionados.append({
+                        "nombre": c0[:100],
+                        "equipo": equipo,
+                        "tipo_lesion": _extraer_texto(celdas[1])[:120],
+                        "retorno_esperado": c3[:120],
+                        "estrellas": estrellas,
+                    })
+            pos = table_end
+
+
 def _procesar_tabla_equipo_fallback(soup, lesionados, sancionados):
     """Fallback: recorrer tablas y asociar con el h2/h3/h4 anterior; solo tablas que parecen de lesionados."""
     for table in soup.find_all("table"):
@@ -200,9 +265,13 @@ def ejecutar_scraper_apuestas_lesionados_sancionados():
                 continue
             _procesar_tabla_equipo(tag, equipo, lesionados, sancionados)
 
-        # Si no se encontró nada, intentar fallback en el mismo root
+        # Si no se encontró nada, intentar fallback: tablas con título anterior
         if not lesionados and not sancionados:
             _procesar_tabla_equipo_fallback(root, lesionados, sancionados)
+
+        # Último recurso: parsear el HTML como texto (por si las tablas son divs o estructura rara)
+        if not lesionados and not sancionados:
+            _parsear_desde_texto(response.text, lesionados, sancionados)
 
         with transaction.atomic():
             Lesionado.objects.all().delete()
