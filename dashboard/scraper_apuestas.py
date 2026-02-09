@@ -348,7 +348,11 @@ def ejecutar_scraper_apuestas_lesionados_sancionados():
     try:
         response = requests.get(URL, headers=HEADERS, timeout=25)
         response.raise_for_status()
-        soup = BeautifulSoup(response.content, "html.parser")
+        # Usar UTF-8 con reemplazo para evitar fallos de codificación en entornos (ej. Render)
+        if response.encoding is None or response.encoding.lower() in ("iso-8859-1", "latin-1"):
+            response.encoding = "utf-8"
+        html_str = response.content.decode("utf-8", errors="replace")
+        soup = BeautifulSoup(html_str, "html.parser")
         lesionados = []
         sancionados = []
 
@@ -382,7 +386,7 @@ def ejecutar_scraper_apuestas_lesionados_sancionados():
 
         # Último recurso: parsear el HTML como texto (por si las tablas son divs o estructura rara)
         if not lesionados and not sancionados:
-            _parsear_desde_texto(response.text, lesionados, sancionados)
+            _parsear_desde_texto(html_str, lesionados, sancionados)
 
         with transaction.atomic():
             Lesionado.objects.all().delete()
