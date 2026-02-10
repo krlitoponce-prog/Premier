@@ -84,16 +84,18 @@
     </form>
 
     {% if marcador %}
-    <div class="card mt-5 border-secondary" style="background-color: #fff;">
-        <div class="card-header text-info border-secondary" style="background-color: #e8f4fc;">
-            <strong>Resultado del pronóstico</strong>
-        </div>
-        <div class="card-body text-dark">
-            <p class="fs-3 mb-3">Marcador: <strong>{{ marcador }}</strong></p>
-            <p class="mb-1">Corners (aprox.): <strong>{{ corners }}</strong></p>
-            <p class="mb-2">Tarjetas (aprox.): <strong>{{ tarjetas }}</strong></p>
-            <p class="mb-1"><strong>Goles en 1.ª parte:</strong> ~{{ pct_goles_primer_tiempo }}% (aprox. {{ goles_primer_tiempo_esperados }} goles)</p>
-            <p class="mb-2"><strong>Prob. ambos anoten:</strong> {{ prob_ambos_anotan }}%</p>
+    <div class="row mt-5 g-4">
+        <div class="col-lg-6">
+            <div class="card h-100 border-secondary" style="background-color: #fff;">
+                <div class="card-header text-info border-secondary" style="background-color: #e8f4fc;">
+                    <strong>Tu pronóstico</strong>
+                </div>
+                <div class="card-body text-dark">
+                    <p class="fs-3 mb-3">Marcador: <strong>{{ marcador }}</strong></p>
+                    <p class="mb-1">Corners (aprox.): <strong>{{ corners }}</strong></p>
+                    <p class="mb-2">Tarjetas (aprox.): <strong>{{ tarjetas }}</strong></p>
+                    <p class="mb-1"><strong>Goles en 1.ª parte:</strong> ~{{ pct_goles_primer_tiempo }}% (aprox. {{ goles_primer_tiempo_esperados }} goles)</p>
+                    <p class="mb-2"><strong>Prob. ambos anoten (partido):</strong> {{ prob_ambos_anotan }}%</p>
 
             <div class="mb-3 p-2 rounded bg-light">
                 <p class="mb-1 text-dark"><strong>Árbitro:</strong> {{ arbitro_nombre }}{% if arbitro_oficial %} <span class="badge bg-success">Oficial</span>{% endif %}</p>
@@ -142,6 +144,53 @@
             <ul class="small text-body-secondary">{% for nombre in sancionados_a %}<li>{{ nombre }}</li>{% endfor %}</ul>
             {% endif %}
             {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100 border-primary" style="background-color: #f0f8ff;">
+                <div class="card-header text-primary border-primary" style="background-color: #e0f0ff;">
+                    <strong>Sportmonks — Probabilidades</strong>
+                </div>
+                <div class="card-body text-dark">
+                    {% if sportmonks_error %}
+                    <p class="text-muted mb-0">{{ sportmonks_error }}</p>
+                    <p class="small text-muted mt-1">Comprueba SPORTMONKS_API_TOKEN y que el partido esté en la fecha indicada.</p>
+                    {% elif sportmonks %}
+                    {% if sportmonks.top_marcadores %}
+                    <p class="fw-bold mb-2">Marcadores más probables</p>
+                    <ul class="list-unstyled mb-3">
+                        {% for marc, prob in sportmonks.top_marcadores %}
+                        <li class="d-flex justify-content-between py-1"><span>{{ marc }}</span><span>{{ prob }}%</span></li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% if sportmonks.total_goals %}
+                    <p class="fw-bold mb-2">Goles totales (más probables)</p>
+                    <ul class="list-unstyled mb-3">
+                        {% for total, prob in sportmonks.total_goals %}
+                        <li class="d-flex justify-content-between py-1"><span>{{ total }} goles</span><span>{{ prob }}%</span></li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% if sportmonks.btts_partido_pct is not None %}
+                    <p class="mb-1"><strong>Ambos anotan (partido):</strong> {{ sportmonks.btts_partido_pct }}%</p>
+                    {% endif %}
+                    {% if head2head %}
+                    <hr class="border-primary">
+                    <p class="fw-bold mb-2">Últimos enfrentamientos</p>
+                    <ul class="list-unstyled small mb-0">
+                        {% for h in head2head %}
+                        <li class="d-flex justify-content-between py-1"><span>{{ h.name }}</span><span>{{ h.score_str }}</span></li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    <p class="small text-muted mb-0 mt-2">Ambos anotan en 1.ª parte: no disponible en este endpoint (solo probabilidades de marcador final).</p>
+                    {% else %}
+                    <p class="text-muted mb-0">Sin datos de probabilidades para este partido.</p>
+                    {% endif %}
+                </div>
+            </div>
         </div>
     </div>
     {% endif %}

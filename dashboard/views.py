@@ -10,6 +10,11 @@ from .utils import (
 from .scraper_apuestas import ejecutar_scraper_apuestas_lesionados_sancionados
 from .scraper_arbitros import ejecutar_scraper_arbitros_fichajes
 from .scraper_livefutbol import obtener_arbitros_livefutbol, limpiar_cache_arbitros
+from .sportmonks_client import (
+    get_prediction_for_match,
+    procesar_probabilidades_sportmonks,
+    get_head2head_by_names,
+)
 from .models import Lesionado, Sancionado
 
 
@@ -19,7 +24,7 @@ def home_dashboard(request):
         arbitros = obtener_lista_arbitros_premier()
     except Exception:
         arbitros = get_arbitros_fallback()
-    context = {"equipos": equipos, "arbitros": arbitros}
+    context = {"equipos": equipos, "arbitros": arbitros, "head2head": []}
 
     if request.method == "POST":
         if "update_bajas" in request.POST:
@@ -77,6 +82,19 @@ def home_dashboard(request):
             context["away_sel"] = away
             if arbitro_manual:
                 context["arbitro_sel"] = arbitro_manual
+            # Datos Sportmonks: marcadores probables, goles totales, ambos anotan
+            fixture_date = context.get("fixture_date_iso")
+            pred, err = get_prediction_for_match(home, away, fixture_date)
+            if err or not pred:
+                context["sportmonks_error"] = err or "Sin datos"
+                context["sportmonks"] = {}
+            else:
+                context["sportmonks_error"] = None
+                scores = (pred.get("scores") or {}) if isinstance(pred, dict) else {}
+                context["sportmonks"] = procesar_probabilidades_sportmonks(scores)
+            # Head2Head: últimos enfrentamientos (no bloquea si falla)
+            head2head_list, _ = get_head2head_by_names(home, away, limit=8)
+            context["head2head"] = head2head_list or []
 
     return render(request, "dashboard/inicio.html", context)
 

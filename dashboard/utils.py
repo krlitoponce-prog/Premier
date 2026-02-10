@@ -235,11 +235,14 @@ def generar_pronostico_pro(home, away, arbitro_manual=None):
     )
     fixture = get_fixture_for_match(home, away)
     fecha_partido = None
+    fixture_date_iso = None
     partido_entre_semana_local = False
     partido_entre_semana_visitante = False
     if fixture:
-        fecha_partido = format_fixture_date(_parse_date_utc(fixture.get("DateUtc")))
         dt = _parse_date_utc(fixture.get("DateUtc"))
+        if dt:
+            fecha_partido = format_fixture_date(dt)
+            fixture_date_iso = dt.strftime("%Y-%m-%d")
         all_matches = _fetch_calendar()
         partido_entre_semana_local = had_midweek_match(home, dt, all_matches)
         partido_entre_semana_visitante = had_midweek_match(away, dt, all_matches)
@@ -290,6 +293,7 @@ def generar_pronostico_pro(home, away, arbitro_manual=None):
         'arbitro_nota': arbitro["nota"],
         'arbitro_oficial': arbitro_oficial,
         'fecha_partido': fecha_partido,
+        'fixture_date_iso': fixture_date_iso,
         'partido_entre_semana_local': partido_entre_semana_local,
         'partido_entre_semana_visitante': partido_entre_semana_visitante,
         'pct_goles_primer_tiempo': pct_primer_tiempo,
