@@ -86,12 +86,22 @@ def home_dashboard(request):
             fixture_date = context.get("fixture_date_iso")
             pred, err = get_prediction_for_match(home, away, fixture_date)
             if err or not pred:
-                context["sportmonks_error"] = err or "Sin datos"
+                msg = err or "Sin datos"
+                if "api_token=" in msg or "for url:" in msg.lower() or "403" in msg or "Forbidden" in msg:
+                    msg = (
+                        "Sportmonks: predicciones no disponibles (acceso denegado). "
+                        "Comprueba en MySportmonks que el componente «Prediction Model» esté habilitado y la API key."
+                    )
+                context["sportmonks_error"] = msg
                 context["sportmonks"] = {}
             else:
                 context["sportmonks_error"] = None
                 scores = (pred.get("scores") or {}) if isinstance(pred, dict) else {}
-                context["sportmonks"] = procesar_probabilidades_sportmonks(scores)
+                context["sportmonks"] = {**procesar_probabilidades_sportmonks(scores)}
+                if pred.get("fulltime_result") is not None:
+                    context["sportmonks"]["fulltime_result"] = pred["fulltime_result"]
+                if pred.get("over_under_25") is not None:
+                    context["sportmonks"]["over_under_25"] = pred["over_under_25"]
             # Head2Head: últimos enfrentamientos (no bloquea si falla)
             head2head_list, _ = get_head2head_by_names(home, away, limit=8)
             context["head2head"] = head2head_list or []

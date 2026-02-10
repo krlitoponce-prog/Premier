@@ -176,6 +176,12 @@
                     {% if sportmonks.btts_partido_pct is not None %}
                     <p class="mb-1"><strong>Ambos anotan (partido):</strong> {{ sportmonks.btts_partido_pct }}%</p>
                     {% endif %}
+                    {% if sportmonks.fulltime_result %}
+                    <p class="mb-1"><strong>Resultado final (1X2):</strong> Local {{ sportmonks.fulltime_result.home }}% · Empate {{ sportmonks.fulltime_result.draw }}% · Visitante {{ sportmonks.fulltime_result.away }}%</p>
+                    {% endif %}
+                    {% if sportmonks.over_under_25 %}
+                    <p class="mb-1"><strong>Más de 2.5 goles:</strong> Sí {{ sportmonks.over_under_25.yes }}% · No {{ sportmonks.over_under_25.no }}%</p>
+                    {% endif %}
                     {% if head2head %}
                     <hr class="border-primary">
                     <p class="fw-bold mb-2">Últimos enfrentamientos</p>

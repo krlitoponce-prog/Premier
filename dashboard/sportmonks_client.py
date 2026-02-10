@@ -42,8 +42,18 @@ def _get(path, params=None, timeout=15):
         r = requests.get(url, params=params, timeout=timeout)
         r.raise_for_status()
         return r.json(), None
+    except requests.HTTPError as e:
+        if e.response.status_code == 403:
+            return None, (
+                "Sportmonks API: acceso denegado (403). "
+                "El endpoint de Predictions/Probabilidades puede no estar incluido en tu plan. "
+                "Revisa en MySportmonks qué endpoints incluye tu suscripción."
+            )
+        if e.response.status_code == 401:
+            return None, "Sportmonks API: API key inválida o expirada (401). Comprueba SPORTMONKS_API_TOKEN."
+        return None, f"Sportmonks API: error HTTP {e.response.status_code}."
     except requests.RequestException as e:
-        return None, str(e)
+        return None, f"Sportmonks API: error de conexión ({type(e).__name__})."
 
 
 # ------ Fixtures ------
@@ -302,20 +312,99 @@ def get_premier_fixture_id_for_teams(home_name, away_name, fixture_date=None):
     return None, "No se encontró partido para esa fecha y equipos"
 
 
+# type_id 240 = Correct Score Probability (marcadores exactos)
+# type_id 231 = Both Teams To Score Probability
+# type_id 237 = Fulltime Result Probability (home, away, draw)
+# type_id 235 = Over/Under 2.5 Probability (yes, no)
+PREDICTION_TYPE_CORRECT_SCORE = 240
+PREDICTION_TYPE_BTTS = 231
+PREDICTION_TYPE_FULLTIME = 237
+PREDICTION_TYPE_OVER_UNDER_25 = 235
+
+
+def _predictions_from_fixture(fixture_data):
+    """
+    Extrae scores, BTTS, resultado final y over/under 2.5 del array predictions de un fixture.
+    Devuelve (scores_dict, btts_yes_pct, fulltime_result, over_under_25).
+    fulltime_result = {"home": %, "away": %, "draw": %}, over_under_25 = {"yes": %, "no": %} o None.
+    """
+    predictions = fixture_data.get("predictions") or []
+    if not isinstance(predictions, list):
+        return None, None, None, None
+    scores = None
+    btts_yes = None
+    fulltime_result = None
+    over_under_25 = None
+    for p in predictions:
+        if not isinstance(p, dict):
+            continue
+        tid = p.get("type_id")
+        pred = p.get("predictions") or {}
+        if tid == PREDICTION_TYPE_CORRECT_SCORE and isinstance(pred.get("scores"), dict):
+            scores = pred["scores"]
+        if tid == PREDICTION_TYPE_BTTS and "yes" in pred:
+            try:
+                btts_yes = float(pred["yes"])
+            except (TypeError, ValueError):
+                pass
+        if tid == PREDICTION_TYPE_FULLTIME and "home" in pred and "away" in pred and "draw" in pred:
+            try:
+                fulltime_result = {
+                    "home": round(float(pred["home"]), 1),
+                    "away": round(float(pred["away"]), 1),
+                    "draw": round(float(pred["draw"]), 1),
+                }
+            except (TypeError, ValueError):
+                pass
+        if tid == PREDICTION_TYPE_OVER_UNDER_25 and "yes" in pred and "no" in pred:
+            try:
+                over_under_25 = {
+                    "yes": round(float(pred["yes"]), 1),
+                    "no": round(float(pred["no"]), 1),
+                }
+            except (TypeError, ValueError):
+                pass
+    return scores, btts_yes, fulltime_result, over_under_25
+
+
 def get_prediction_for_match(home_name, away_name, fixture_date=None):
     """
     Obtiene las probabilidades de marcador (Sportmonks) para local vs visitante.
-    Devuelve dict con 'scores' (ej. {"1-0": 4.75, "1-1": 8.72, ...}) o None y mensaje de error.
+    Prueba primero el endpoint de probabilities; si da 403, usa GET fixture con include=predictions.
+    Devuelve dict con 'scores' y opcionalmente 'btts_yes', o None y mensaje de error.
     """
     fixture_id, err = get_premier_fixture_id_for_teams(home_name, away_name, fixture_date)
     if err or not fixture_id:
         return None, err or "Fixture no encontrado"
+
+    # 1) Intentar endpoint dedicado de probabilidades
     prob, err = get_probabilities_by_fixture_id(fixture_id)
-    if err or not prob:
-        return None, err or "Sin probabilidades"
-    predictions = prob.get("predictions") or {}
-    scores = predictions.get("scores") or {}
-    return {"fixture_id": fixture_id, "scores": scores, "raw": prob}, None
+    if not err and prob:
+        predictions = prob.get("predictions") or {}
+        scores = predictions.get("scores") or {}
+        return {"fixture_id": fixture_id, "scores": scores, "raw": prob}, None
+
+    # 2) Fallback: GET fixture con include=predictions (estructura que enviaste)
+    fixture, err_fix = get_fixture_by_id(fixture_id, include="predictions")
+    if err_fix or not fixture:
+        return None, (
+            "Predicciones no disponibles. Comprueba en MySportmonks que el componente "
+            '"Prediction Model" esté habilitado o que el partido tenga datos de predicción.'
+        )
+    scores, btts_yes, fulltime_result, over_under_25 = _predictions_from_fixture(fixture)
+    if not scores:
+        return None, (
+            "Predicciones no disponibles para este partido. Comprueba en MySportmonks "
+            'el componente "Prediction Model" o la fecha del partido.'
+        )
+    result = {"fixture_id": fixture_id, "scores": scores, "raw": fixture}
+    if btts_yes is not None:
+        result["btts_yes"] = round(btts_yes, 1)
+    if fulltime_result is not None:
+        result["fulltime_result"] = fulltime_result
+    if over_under_25 is not None:
+        result["over_under_25"] = over_under_25
+    return result, None
 
 
 def procesar_probabilidades_sportmonks(scores_dict):
